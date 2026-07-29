@@ -1,6 +1,11 @@
 package com.talalatxp.impostorgame.domain.model
 
-data class WordItem(val id: String, val word: String, val clue: String)
+data class WordItem(
+    val id: String,
+    val word: String,
+    val clue: String,
+    val isUsed: Boolean = false,
+)
 
 data class Category(
     val id: String,
@@ -29,10 +34,16 @@ data class GameSession(
 
 data class GameStats(val innocentWins: Int = 0, val impostorWins: Int = 0)
 
+data class PlayerScore(
+    val playerId: String,
+    val playerName: String,
+    val points: Int = 0,
+)
+
 data class AppData(
     val categories: List<Category>,
     val savedPlayers: List<Player>,
     val settings: GameSettings,
     val stats: GameStats,
+    val generalRanking: List<PlayerScore>,
 )
-

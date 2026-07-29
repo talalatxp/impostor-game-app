@@ -1,5 +1,7 @@
 package com.talalatxp.impostorgame.presentation
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.talalatxp.impostorgame.data.local.DefaultCategories
@@ -10,6 +12,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
+import kotlin.random.Random
 
 enum class Screen { HOME, SETUP, CATEGORIES, ROLES, ROUND, RESULTS }
 enum class Winner { INNOCENTS, IMPOSTORS }
@@ -21,6 +24,8 @@ data class GameUiState(
     val players: List<Player> = emptyList(),
     val settings: GameSettings = GameSettings(),
     val stats: GameStats = GameStats(),
+    val generalRanking: List<PlayerScore> = emptyList(),
+    val sessionRanking: List<PlayerScore> = emptyList(),
     val session: GameSession? = null,
     val roleIndex: Int = 0,
     val remainingSeconds: Int = 0,
@@ -35,6 +40,7 @@ class GameViewModel(repository: GameRepository) : ViewModel() {
     private val savePlayers = SavePlayersUseCase(repository)
     private val saveSettings = SaveSettingsUseCase(repository)
     private val saveStats = SaveStatsUseCase(repository)
+    private val saveGeneralRanking = SaveGeneralRankingUseCase(repository)
     private val createGame = CreateGameUseCase()
     private var timerJob: Job? = null
 
@@ -44,11 +50,37 @@ class GameViewModel(repository: GameRepository) : ViewModel() {
     init {
         viewModelScope.launch {
             val data = load()
-            uiState = uiState.copy(categories = data.categories, players = data.savedPlayers, settings = data.settings, stats = data.stats, isLoading = false)
+            val settings = if (data.settings.timerDurationSeconds == 60) {
+                data.settings.copy(timerDurationSeconds = 120)
+            } else {
+                data.settings
+            }
+            uiState = uiState.copy(
+                categories = data.categories,
+                players = data.savedPlayers,
+                settings = settings,
+                stats = data.stats,
+                generalRanking = data.generalRanking,
+                isLoading = false,
+            )
+            if (settings != data.settings) saveSettings(settings)
         }
     }
 
     fun navigate(screen: Screen) { uiState = uiState.copy(screen = screen, error = null) }
+
+    fun goBack() {
+        val previousScreen = when (uiState.screen) {
+            Screen.SETUP, Screen.CATEGORIES -> Screen.HOME
+            Screen.ROLES -> Screen.SETUP
+            Screen.HOME, Screen.ROUND, Screen.RESULTS -> return
+        }
+        uiState = uiState.copy(
+            screen = previousScreen,
+            isTimerRunning = false,
+            error = null,
+        )
+    }
 
     fun addPlayer(name: String) {
         val cleanName = name.trim()
@@ -98,12 +130,19 @@ class GameViewModel(repository: GameRepository) : ViewModel() {
         if (category.id == categoryId) category.copy(words = category.words.filterNot { it.id == wordId }) else category
     })
 
+    fun setWordUsed(categoryId: String, wordId: String, isUsed: Boolean) = updateCategories(uiState.categories.map { category ->
+        if (category.id == categoryId) category.copy(words = category.words.map { word ->
+            if (word.id == wordId) word.copy(isUsed = isUsed) else word
+        }) else category
+    })
+
     fun renameCategory(categoryId: String, name: String) {
         if (name.isBlank()) return
         updateCategories(uiState.categories.map { if (it.id == categoryId) it.copy(name = name.trim()) else it })
     }
     fun deleteCategory(categoryId: String) = updateCategories(uiState.categories.filterNot { it.id == categoryId && it.isCustom })
     fun resetCategories() = updateCategories(DefaultCategories.items)
+    fun generateTenCategories() = updateCategories(DefaultCategories.items.shuffled(Random.Default).take(10))
     private fun updateCategories(categories: List<Category>) {
         uiState = uiState.copy(categories = categories)
         viewModelScope.launch { saveCategories(categories) }
@@ -112,10 +151,16 @@ class GameViewModel(repository: GameRepository) : ViewModel() {
     fun startGame() {
         val session = createGame(uiState.players, uiState.settings, uiState.categories)
         if (session == null) {
-            uiState = uiState.copy(error = if (uiState.players.size < 3) "Añade al menos 3 jugadores." else "Selecciona una categoría con palabras.")
+            uiState = uiState.copy(error = if (uiState.players.size < 3) "Añade al menos 3 jugadores." else "No quedan palabras disponibles. Reactiva algunas desde Categorías.")
             return
         }
-        uiState = uiState.copy(session = session, roleIndex = 0, remainingSeconds = session.settings.timerDurationSeconds, winner = null, screen = Screen.ROLES, error = null)
+        val categories = uiState.categories.map { category ->
+            if (category.words.any { it.id == session.word.id }) {
+                category.copy(words = category.words.map { word -> if (word.id == session.word.id) word.copy(isUsed = true) else word })
+            } else category
+        }
+        updateCategories(categories)
+        uiState = uiState.copy(categories = categories, session = session, roleIndex = 0, remainingSeconds = session.settings.timerDurationSeconds, winner = null, screen = Screen.ROLES, error = null)
     }
 
     fun nextRole() {
@@ -143,8 +188,53 @@ class GameViewModel(repository: GameRepository) : ViewModel() {
     fun addTime(seconds: Int = 30) { uiState = uiState.copy(remainingSeconds = uiState.remainingSeconds + seconds) }
     fun finishRound() { timerJob?.cancel(); uiState = uiState.copy(isTimerRunning = false, screen = Screen.RESULTS) }
     fun recordWinner(winner: Winner) {
+        if (uiState.winner != null) return
+        val roles = uiState.session?.roles ?: return
         val stats = if (winner == Winner.INNOCENTS) uiState.stats.copy(innocentWins = uiState.stats.innocentWins + 1) else uiState.stats.copy(impostorWins = uiState.stats.impostorWins + 1)
-        uiState = uiState.copy(stats = stats, winner = winner)
-        viewModelScope.launch { saveStats(stats) }
+        val generalRanking = addResultToRanking(uiState.generalRanking, roles, winner)
+        val sessionRanking = addResultToRanking(uiState.sessionRanking, roles, winner)
+        uiState = uiState.copy(
+            stats = stats,
+            generalRanking = generalRanking,
+            sessionRanking = sessionRanking,
+            winner = winner,
+        )
+        viewModelScope.launch {
+            saveStats(stats)
+            saveGeneralRanking(generalRanking)
+        }
+    }
+
+    fun clearSessionRanking() {
+        uiState = uiState.copy(sessionRanking = emptyList())
+    }
+
+    private fun addResultToRanking(
+        current: List<PlayerScore>,
+        roles: List<PlayerRole>,
+        winner: Winner,
+    ): List<PlayerScore> {
+        val scores = current.associateBy { it.playerId }.toMutableMap()
+        roles.forEach { role ->
+            val previous = scores[role.player.id]
+            val won = when (winner) {
+                Winner.INNOCENTS -> !role.isImpostor
+                Winner.IMPOSTORS -> role.isImpostor
+            }
+            val earnedPoints = when {
+                !won -> 0
+                role.isImpostor -> 2
+                else -> 1
+            }
+            scores[role.player.id] = PlayerScore(
+                playerId = role.player.id,
+                playerName = role.player.name,
+                points = (previous?.points ?: 0) + earnedPoints,
+            )
+        }
+        return scores.values.sortedWith(
+            compareByDescending<PlayerScore> { it.points }
+                .thenBy { it.playerName.lowercase() },
+        )
     }
 }

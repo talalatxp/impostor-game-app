@@ -5,6 +5,7 @@ import com.talalatxp.impostorgame.domain.model.Category
 import com.talalatxp.impostorgame.domain.model.GameSettings
 import com.talalatxp.impostorgame.domain.model.GameStats
 import com.talalatxp.impostorgame.domain.model.Player
+import com.talalatxp.impostorgame.domain.model.PlayerScore
 
 interface GameRepository {
     suspend fun load(): AppData
@@ -12,5 +13,5 @@ interface GameRepository {
     suspend fun savePlayers(players: List<Player>)
     suspend fun saveSettings(settings: GameSettings)
     suspend fun saveStats(stats: GameStats)
+    suspend fun saveGeneralRanking(ranking: List<PlayerScore>)
 }
-

@@ -1,3 +1,9 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.ImpostorGame" parent="android:style/Theme.Material.Light.NoActionBar" />
+
+    <style name="Theme.ImpostorGame.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_burgundy</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.ImpostorGame</item>
+    </style>
 </resources>
