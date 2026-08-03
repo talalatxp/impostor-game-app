@@ -88,8 +88,8 @@ class GameRepositoryImpl(private val context: Context) : GameRepository {
     } } }
     private fun encodePlayers(players: List<Player>) = JSONArray().apply { players.forEach { put(JSONObject().put("id", it.id).put("name", it.name)) } }.toString()
     private fun decodePlayers(raw: String) = JSONArray(raw).let { array -> List(array.length()) { i -> array.getJSONObject(i).let { Player(it.getString("id"), it.getString("name")) } } }
-    private fun encodeSettings(value: GameSettings) = JSONObject().put("impostors", value.impostorsCount).put("timer", value.timerDurationSeconds).put("clue", value.impostorGetsClue).put("categories", JSONArray(value.selectedCategoryIds.toList())).toString()
-    private fun decodeSettings(raw: String) = JSONObject(raw).let { json -> GameSettings(json.optInt("impostors", 1), json.optInt("timer", 120), json.optJSONArray("categories")?.let { array -> List(array.length()) { array.getString(it) }.toSet() } ?: emptySet(), json.optBoolean("clue", true)) }
+    private fun encodeSettings(value: GameSettings) = JSONObject().put("impostors", value.impostorsCount).put("timer", value.timerDurationSeconds).put("clue", value.impostorGetsClue).put("categories", JSONArray(value.selectedCategoryIds.toList())).put("mode", value.mode.name).toString()
+    private fun decodeSettings(raw: String) = JSONObject(raw).let { json -> GameSettings(json.optInt("impostors", 1), json.optInt("timer", 120), json.optJSONArray("categories")?.let { array -> List(array.length()) { array.getString(it) }.toSet() } ?: emptySet(), json.optBoolean("clue", true), runCatching { GameMode.valueOf(json.optString("mode", GameMode.STANDARD.name)) }.getOrDefault(GameMode.STANDARD)) }
     private fun decodeStats(raw: String) = JSONObject(raw).let { GameStats(it.optInt("innocent"), it.optInt("impostor")) }
     private fun encodeRanking(ranking: List<PlayerScore>) = JSONArray().apply {
         ranking.forEach { score ->

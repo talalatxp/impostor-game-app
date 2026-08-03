@@ -38,6 +38,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.talalatxp.impostorgame.R
 import com.talalatxp.impostorgame.domain.model.Category
 import com.talalatxp.impostorgame.domain.model.GameSettings
+import com.talalatxp.impostorgame.domain.model.GameMode
 import com.talalatxp.impostorgame.domain.model.Player
 import com.talalatxp.impostorgame.domain.model.PlayerRole
 import com.talalatxp.impostorgame.domain.model.PlayerScore
@@ -204,6 +205,7 @@ private fun RankingCard(ranking: List<PlayerScore>) {
 @Composable private fun SetupScreen(state: GameUiState, vm: GameViewModel) = AppScaffold("Configurar partida", vm::goBack) { padding ->
     var playerName by remember { mutableStateOf("") }
     LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(top = 16.dp, bottom = 28.dp)) {
+        item { GameModePicker(state.settings, vm) }
         item { Text("Jugadores", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -217,12 +219,32 @@ private fun RankingCard(ranking: List<PlayerScore>) {
             Spacer(Modifier.height(14.dp))
             Text("Ajustes", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
-        item { ImpostorCount(state.players.size, state.settings, vm) }
+        if (state.settings.mode == GameMode.STANDARD) item { ImpostorCount(state.players.size, state.settings, vm) }
         item { TimerChooser(state.settings, vm) }
         item { SwitchRow("El impostor recibe pista", state.settings.impostorGetsClue) { checked -> vm.updateSettings { it.copy(impostorGetsClue = checked) } } }
-        item { CategoryPicker(state.categories, state.settings, vm) }
+        if (state.settings.mode == GameMode.STANDARD) item { CategoryPicker(state.categories, state.settings, vm) }
+        else item { ChaosInfo() }
         item { state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) } }
         item { Button(onClick = vm::startGame, modifier = Modifier.fillMaxWidth().height(56.dp), enabled = state.players.size >= 3) { Text("Repartir roles") } }
+    }
+}
+
+@Composable private fun GameModePicker(settings: GameSettings, vm: GameViewModel) = Card(Modifier.fillMaxWidth()) {
+    Column(Modifier.padding(20.dp)) {
+        Text("Modo de juego", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("Elige cómo será esta partida", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(14.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = settings.mode == GameMode.STANDARD, onClick = { vm.updateSettings { it.copy(mode = GameMode.STANDARD) } }, modifier = Modifier.weight(1f).height(54.dp), label = { Text("Estándar", style = MaterialTheme.typography.titleMedium) })
+            FilterChip(selected = settings.mode == GameMode.CHAOS, onClick = { vm.updateSettings { it.copy(mode = GameMode.CHAOS) } }, modifier = Modifier.weight(1f).height(54.dp), label = { Text("Caos", style = MaterialTheme.typography.titleMedium) })
+        }
+    }
+}
+
+@Composable private fun ChaosInfo() = Card(Modifier.fillMaxWidth()) {
+    Column(Modifier.padding(16.dp)) {
+        Text("Caos activado", fontWeight = FontWeight.Medium)
+        Text("La app elegirá al azar los impostores y una categoría disponible. Siempre habrá al menos dos inocentes.", style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -263,12 +285,23 @@ private fun RankingCard(ranking: List<PlayerScore>) {
 }
 
 @Composable private fun CategoryPicker(categories: List<Category>, settings: GameSettings, vm: GameViewModel) = Card(Modifier.fillMaxWidth()) {
+    var expanded by remember { mutableStateOf(false) }
     Column(Modifier.padding(16.dp)) {
-        Text("Categorías activas", fontWeight = FontWeight.Medium)
-        Text("Sin selección equivale a usar todas.", style = MaterialTheme.typography.bodySmall)
-        categories.forEach { category ->
-            Row(Modifier.fillMaxWidth().clickable { vm.toggleCategory(category.id) }, verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(category.id in settings.selectedCategoryIds, { vm.toggleCategory(category.id) }); Text(category.name)
+        Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }, verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Categorías activas", fontWeight = FontWeight.Medium)
+                val summary = if (settings.selectedCategoryIds.isEmpty()) "Todas activas" else "${settings.selectedCategoryIds.size} seleccionadas"
+                Text(summary, style = MaterialTheme.typography.bodySmall)
+            }
+            Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (expanded) "Cerrar categorías" else "Abrir categorías")
+        }
+        if (expanded) {
+            Spacer(Modifier.height(8.dp))
+            Text("Sin selección equivale a usar todas.", style = MaterialTheme.typography.bodySmall)
+            categories.forEach { category ->
+                Row(Modifier.fillMaxWidth().clickable { vm.toggleCategory(category.id) }, verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(category.id in settings.selectedCategoryIds, { vm.toggleCategory(category.id) }); Text(category.name)
+                }
             }
         }
     }

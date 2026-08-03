@@ -17,11 +17,14 @@ data class Category(
 
 data class Player(val id: String, val name: String)
 
+enum class GameMode { STANDARD, CHAOS }
+
 data class GameSettings(
     val impostorsCount: Int = 1,
     val timerDurationSeconds: Int = 120,
     val selectedCategoryIds: Set<String> = emptySet(),
     val impostorGetsClue: Boolean = true,
+    val mode: GameMode = GameMode.STANDARD,
 )
 
 data class PlayerRole(val player: Player, val isImpostor: Boolean, val clue: String?)
